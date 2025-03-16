@@ -763,8 +763,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # hong kong traffic monitor
 
-    user_location = get_current_location()
+    # hong kong ip location
+    user_location = [22.3193, 114.1694]
 
     # After camera analysis
 
