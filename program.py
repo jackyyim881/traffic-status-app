@@ -18,6 +18,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import subprocess
 
+
 # Load environment variables
 load_dotenv()
 
@@ -203,7 +204,12 @@ def find_nearby_cameras(geojson_data, user_lat, user_lng, radius_km=2.0):
 
 def analyze_traffic_image(image_url):
     """Analyze traffic image using X.AI API"""
-    api_key = os.getenv("X_API_KEY")
+
+    try:
+        api_key = st.secrets["X_API_KEY"]["value"]
+    except Exception:
+        api_key = os.getenv("X_API_KEY")
+
     if not api_key:
         return "API key not found in environment variables"
 
