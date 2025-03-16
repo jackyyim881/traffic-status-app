@@ -612,7 +612,9 @@ def main():
     )
 
     if location_method == "Use my current location (IP-based)":
-        user_location = get_current_location()
+        # user_location = get_current_location()
+        # hong kong location
+        user_location = [22.3193, 114.1694]
         st.info(
             f"Using your current location: Lat {user_location[0]:.4f}, Long {user_location[1]:.4f}")
     else:
