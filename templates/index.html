@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hong Kong Carpark Query System</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- Add Leaflet CSS for OpenStreetMap -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      body {
+        padding: 20px;
+        background-color: #f8f9fa;
+      }
+      .result-card {
+        margin-top: 20px;
+        border-left: 4px solid #0d6efd;
+      }
+      .carpark-item {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f0f0f0;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      .carpark-item:hover {
+        background-color: #e3e3e3;
+      }
+      .loading-spinner {
+        display: none;
+        margin-top: 20px;
+      }
+      .similarity-score {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        color: white;
+        background-color: #0d6efd;
+      }
+      #map {
+        height: 400px;
+        width: 100%;
+        margin-top: 20px;
+        border-radius: 5px;
+        display: none;
+      }
+      .selected-carpark {
+        background-color: #e0f0ff;
+        border-left: 4px solid #0d6efd;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <h1 class="text-center mb-4">Hong Kong Carpark Query System</h1>
+
+          <div class="card">
+            <div class="card-body">
+              <form id="queryForm">
+                <div class="mb-3">
+                  <label for="queryInput" class="form-label"
+                    >Ask a question about Hong Kong carparks:</label
+                  >
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="queryInput"
+                    placeholder="E.g., Where can I park in Central?"
+                    required
+                  />
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                  Submit Query
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="loading-spinner text-center" id="loadingSpinner">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Processing your query...</p>
+          </div>
+
+          <div
+            id="errorAlert"
+            class="alert alert-danger mt-3"
+            style="display: none"
+          ></div>
+
+          <div id="resultContainer" style="display: none">
+            <div class="card result-card">
+              <div class="card-header">
+                <h5>Answer</h5>
+              </div>
+              <div class="card-body">
+                <p id="answerText"></p>
+                <small class="text-muted"
+                  >Processing time:
+                  <span id="processingTime"></span> seconds</small
+                >
+              </div>
+            </div>
+
+            <!-- Map Container -->
+            <div id="map"></div>
+
+            <div class="card mt-3 result-card">
+              <div class="card-header">
+                <h5>Matched Carparks</h5>
+              </div>
+              <div class="card-body">
+                <div id="carparksContainer"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Leaflet JS for OpenStreetMap -->
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script>
+      // Initialize map but don't show it yet
+      let map = null;
+      let markers = [];
+      setTimeout(function () {
+        map.invalidateSize();
+      }, 500);
+      const hongKongCenter = [22.3193, 114.1694]; // Hong Kong center coordinates
+
+      function initMap() {
+        if (map === null) {
+          map = L.map("map").setView(hongKongCenter, 12);
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          }).addTo(map);
+        }
+        return map;
+      }
+
+      // Function to geocode an address in Hong Kong
+      async function geocodeAddress(address) {
+        try {
+          const query = encodeURIComponent(`${address}`);
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`
+          );
+          const data = await response.json();
+
+          if (data && data.length > 0) {
+            return {
+              lat: parseFloat(data[0].lat),
+              lon: parseFloat(data[0].lon),
+            };
+          }
+          return null;
+        } catch (error) {
+          console.error("Geocoding error:", error);
+          return null;
+        }
+      }
+
+      function clearMarkers() {
+        if (map) {
+          markers.forEach((marker) => map.removeLayer(marker));
+          markers = [];
+        }
+      }
+
+      function addMarker(lat, lon, title, content) {
+        const marker = L.marker([lat, lon])
+          .addTo(map)
+          .bindPopup(`<b>${title}</b><br>${content}`);
+        markers.push(marker);
+        return marker;
+      }
+
+      function focusMarker(index) {
+        if (index >= 0 && index < markers.length) {
+          const marker = markers[index];
+          map.setView(marker.getLatLng(), 16);
+          marker.openPopup();
+        }
+      }
+
+      document
+        .getElementById("queryForm")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+
+          const query = document.getElementById("queryInput").value.trim();
+          if (!query) return;
+
+          // Show loading spinner
+          document.getElementById("loadingSpinner").style.display = "block";
+          document.getElementById("resultContainer").style.display = "none";
+          document.getElementById("errorAlert").style.display = "none";
+
+          // Clear previous markers
+          clearMarkers();
+
+          // Make API request
+          fetch("/api/query", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query }),
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(
+                  `Server responded with ${response.status}: ${response.statusText}`
+                );
+              }
+              return response.json();
+            })
+            .then(async (data) => {
+              // Hide spinner
+              document.getElementById("loadingSpinner").style.display = "none";
+
+              if (data.status === "error") {
+                showError(data.message);
+                return;
+              }
+
+              // Display results
+              document.getElementById("answerText").textContent = data.answer;
+              document.getElementById("processingTime").textContent =
+                data.processing_time.toFixed(2);
+
+              // Initialize map
+              document.getElementById("map").style.display = "block";
+              const mapInstance = initMap();
+              mapInstance.invalidateSize();
+
+              // Display carparks
+              const carparksContainer =
+                document.getElementById("carparksContainer");
+              carparksContainer.innerHTML = "";
+
+              if (data.carparks && data.carparks.length > 0) {
+                // Process each carpark
+                for (let i = 0; i < data.carparks.length; i++) {
+                  const carpark = data.carparks[i];
+                  const carparkElement = document.createElement("div");
+                  carparkElement.className = "carpark-item";
+                  carparkElement.dataset.index = i;
+
+                  // Add click event to focus on map
+                  carparkElement.addEventListener("click", function () {
+                    // Remove selected class from all items
+                    document.querySelectorAll(".carpark-item").forEach((el) => {
+                      el.classList.remove("selected-carpark");
+                    });
+
+                    // Add selected class to clicked item
+                    this.classList.add("selected-carpark");
+
+                    // Focus on marker
+                    focusMarker(parseInt(this.dataset.index));
+                  });
+
+                  const similarityScore = document.createElement("div");
+                  similarityScore.className = "similarity-score float-end";
+                  similarityScore.textContent = `Relevance: ${(
+                    carpark.similarity * 100
+                  ).toFixed(1)}%`;
+
+                  carparkElement.innerHTML = `
+                    <strong>Name:</strong> ${carpark.carpark_name}<br>
+                    <strong>Region:</strong> ${carpark.region}<br>
+                    <strong>Area:</strong> ${carpark.area}<br>
+                    <strong>Address:</strong> ${carpark.address}
+                  `;
+                  carparkElement.appendChild(similarityScore);
+                  carparksContainer.appendChild(carparkElement);
+
+                  // Geocode the address and add marker to map
+                  const location = await geocodeAddress(`${carpark.address}  `);
+                  if (location) {
+                    const marker = addMarker(
+                      location.lat,
+                      location.lon,
+                      carpark.carpark_name,
+                      `${carpark.address}, ${carpark.area}, ${carpark.region}`
+                    );
+
+                    // Add click event to marker to highlight corresponding carpark in list
+                    marker.on("click", function () {
+                      document
+                        .querySelectorAll(".carpark-item")
+                        .forEach((el) => {
+                          el.classList.remove("selected-carpark");
+                        });
+
+                      const element = document.querySelector(
+                        `.carpark-item[data-index="${i}"]`
+                      );
+                      if (element) {
+                        element.classList.add("selected-carpark");
+                        element.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                      }
+                    });
+                  }
+                }
+
+                // If we have markers, fit the map to show all of them
+                if (markers.length > 0) {
+                  const group = L.featureGroup(markers);
+                  map.fitBounds(group.getBounds().pad(0.1));
+                } else {
+                  // If no markers were created, center on Hong Kong
+                  map.setView(hongKongCenter, 11);
+                }
+              } else {
+                carparksContainer.innerHTML =
+                  "<p>No matching carparks found.</p>";
+                map.setView(hongKongCenter, 11); // Center on Hong Kong if no results
+              }
+
+              document.getElementById("resultContainer").style.display =
+                "block";
+            })
+            .catch((error) => {
+              document.getElementById("loadingSpinner").style.display = "none";
+              showError(`Error: ${error.message}`);
+            });
+        });
+
+      function showError(message) {
+        const errorAlert = document.getElementById("errorAlert");
+        errorAlert.textContent = message;
+        errorAlert.style.display = "block";
+      }
+    </script>
+  </body>
+</html>

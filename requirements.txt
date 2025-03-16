@@ -1,0 +1,11 @@
+streamlit
+folium
+streamlit-folium
+Pillow
+requests
+openai
+python-dotenv
+geocoder
+pydantic
+edge-tts
+plotly-express
