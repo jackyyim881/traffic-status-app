@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 from dotenv import load_dotenv
 import subprocess
-
+import xml.etree.ElementTree as ET
 
 # Load environment variables
 load_dotenv()
@@ -590,6 +590,56 @@ def main():
         "This app uses your location to find nearby traffic cameras "
         "and provides real-time traffic status using AI analysis."
     )
+    st.sidebar.title("🛣️ Traffic Monitor")
+
+    st.sidebar.header("🚦 交通消息")
+
+    url = "https://www.td.gov.hk/tc/special_news/trafficnews.xml"
+
+    response = requests.get(url)
+
+    # 檢查請求是否成功
+    if response.status_code == 200:
+        # 解析 XML
+        root = ET.fromstring(response.content)
+
+        with st.sidebar:
+            st.header("特別交通消息詳情")
+            for message in root.findall(".//message"):
+                # 提取字段
+                incident_number = message.find("INCIDENT_NUMBER").text
+                heading_en = message.find("INCIDENT_HEADING_EN").text
+                heading_cn = message.find("INCIDENT_HEADING_CN").text
+                detail_en = message.find("INCIDENT_DETAIL_EN").text
+                detail_cn = message.find("INCIDENT_DETAIL_CN").text
+                location_en = message.find("LOCATION_EN").text
+                location_cn = message.find("LOCATION_CN").text
+                direction_en = message.find("DIRECTION_EN").text
+                direction_cn = message.find("DIRECTION_CN").text
+                announcement_date = message.find("ANNOUNCEMENT_DATE").text
+                status_en = message.find("INCIDENT_STATUS_EN").text
+                status_cn = message.find("INCIDENT_STATUS_CN").text
+                near_landmark_en = message.find("NEAR_LANDMARK_EN").text
+                near_landmark_cn = message.find("NEAR_LANDMARK_CN").text
+                content_en = message.find("CONTENT_EN").text.strip()
+                content_cn = message.find("CONTENT_CN").text.strip()
+
+                # 格式化時間
+                date_obj = datetime.strptime(
+                    announcement_date, "%Y-%m-%dT%H:%M:%S")
+                formatted_date = date_obj.strftime("%Y年%m月%d日 %H:%M")
+
+                # 使用 expander 顯示每條消息
+                with st.expander(f"{heading_cn} - {incident_number} ({formatted_date})"):
+                    st.write(f"**狀態**: {status_cn} ({status_en})")
+                    st.write(
+                        f"**地點**: {location_cn} ({location_en}) 往 {direction_cn} ({direction_en})")
+                    st.write(f"**詳情**: {detail_cn} ({detail_en})")
+                    st.write(
+                        f"**附近地標**: {near_landmark_cn} ({near_landmark_en})")
+                    st.markdown("**消息內容**:")
+                    st.write(f"- 中文: {content_cn}")
+                    st.write(f"- 英文: {content_en}")
 
     # Try to load traffic camera data
     try:
